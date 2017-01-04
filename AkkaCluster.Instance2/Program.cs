@@ -1,34 +1,38 @@
 ﻿using System;
 using Akka.Actor;
+using Akka.Cluster;
+using Akka.Cluster.Sharding;
+using AkkaCluster.Common;
 
 namespace AkkaCluster.Instance2
 {
 	class Program
 	{
+	    // ReSharper disable once UnusedParameter.Local
 		static void Main(string[] args)
 		{
 			using (var clusterSystem = ActorSystem.Create("mycluster"))
 			{
-				Console.ReadKey();
+                var cluster = Cluster.Get(clusterSystem);
 
-				Console.WriteLine("Sending echo to the other side");
+                Console.Title = $"Other Side - {cluster.SelfAddress}";
 
-				var echoSelection = clusterSystem.ActorSelection("/user/echo");
-				echoSelection.Tell("Hello from the other side");
+                cluster.RegisterOnMemberUp(() => Console.WriteLine("Cluster Member is up"));
 
-				//http://stackoverflow.com/questions/35634127/akka-net-access-remote-actors-in-cluster
-				/*
-				// register actor type as a sharded entity
-				var region = ClusterSharding.Get(system).Start(
-					typeName: "my-actor",
-					entityProps: Props.Create<MyActor>(),
-					settings: ClusterShardingSettings.Create(system),
-					messageExtractor: new MessageExtractor());
-	
-				// send message to entity through shard region
-				region.Tell(new Envelope(shardId: 1, entityId: 1, message: "hello"))
-				*/
-				Console.ReadKey();
+                var sharding = ClusterSharding.Get(clusterSystem);
+                var shardRegion = sharding.Start(
+                    typeName: "echo",
+                    entityProps: Props.Create<EchoActor>(),
+                    settings: ClusterShardingSettings.Create(clusterSystem),
+                    messageExtractor: new MessageExtractor(2));
+
+                shardRegion.Tell(new ShardEnvelope("foo", "Hello from the other side"));
+
+			    while (Console.ReadKey().Key != ConsoleKey.Q)
+			    {
+                    shardRegion.Tell(new ShardEnvelope("foo", $"Other side time is {DateTime.Now}"));
+                }
+               
 			}
 		}
 	}
